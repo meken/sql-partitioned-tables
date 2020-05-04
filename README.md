@@ -47,28 +47,19 @@ In this example we'll be keeping the data in the hot data store for 10 days befo
 So, we'll have to have at least 10 partitions in the hot table. However, in order to minimize expensive data movement
 during partition maintenance of a sliding window it's recommended to keep the first and the last partitions empty. That
 leads to two more partitions at the both ends of the date range. In addition, we'll be probably doing the
-partition switching nightly, and to ensure that we have an empty partition at all times as at night we're
+partition switching nightly, and to ensure that we have an empty partition at all times, as at night we're
 already storing data in tomorrow's partition, we'll add another partition as a buffer. So, we end up with 13 partitions.
+
+> In order to define the partitions we'll specify the partition boundaries. Keep in mind that the total number of
+> partitions is the number of boundaries *plus* 1.
 
 Let's assume that today is 10th of May and we'd like to keep the last 10 days worth of data (including today). This
 would require us to have the following structure.
 
-```pre
-                                                     today
-                                                       |
-                                                       V
- +-----------+----------+--------+--------+--------+--------+--------+-----------+
- | Partition |    1     |   2    |   3    |  ...   |   11   |   12   |    13     |
- +-----------+----------+--------+--------+--------+--------+--------+-----------+
- | Boundary  | < 01 May | 01 May | 02 May |  ...   | 10 May | 11 May | &GreaterEqual; 12 May |
- +-----------+----------+--------+--------+--------+--------+--------+-----------+
- | Content   |  empty   |  data  |  data  |  ...   |  data  |  empty |   empty   |
- +-----------+----------+--------+--------+--------+--------+--------+-----------+
-
-```
+![source partitions](/images/source.png)
 
 Partitioning a table is a three step process, we first need to define a partition function to define the partition
-boundaries, followed by a partition scheme to map partitions to filegroups and then apply the partition function to
+boundaries, followed by a partition scheme to map partitions to filegroups and then apply the partition scheme to
 the table.
 
 ### The partition function
@@ -85,7 +76,7 @@ AS RANGE RIGHT FOR VALUES (
 ```
 
 Note if you need to create many partitions you can either build a script in your favourite language or do it in
-SQL.
+T-SQL.
 
 ```SQL
 DECLARE @ndays int = 10;
@@ -117,16 +108,6 @@ The ranges defined above use the `RANGE RIGHT` option, this makes sure that you'
 _lower_ boundary for your partitions. `RANGE LEFT` on the other hand would set the _upper_ boundaries, and
 that's usually more tricky to use with dates.
 
-Keep also in mind that the total number of partitions is the number of boundaries *plus* 1. If you'd specify a
-`RANGE RIGHT` for values X, Y and Z, your partitions would look like this
-
-| Boundary  | Partition |
-| --------- | --------- |
-| &lt; X    | 1 |
-| &GreaterEqual; X and &lt; Y | 2 |
-| &GreaterEqual; Y and &lt; Z | 3 |
-| &GreaterEqual; Z | 4 |
-
 Now we've got a partition function, let's define the partition scheme.
 
 ### The partition scheme
@@ -152,10 +133,10 @@ CREATE TABLE orders (
     [order_date] DATETIME2(7) NOT NULL,
     [order_amount] BIGINT NOT NULL DEFAULT 0,
     [product_id] BIGINT NOT NULL,
-	...
+    ...
     [order_code] VARCHAR(32) NULL,
     PRIMARY KEY ([customer_id], [order_date])
-) ON pf_daily([order_date]);
+) ON ps_daily([order_date]);
 ```
 
 After having created the table, we can start inserting the data. If you're interested in best practices around how
@@ -174,12 +155,13 @@ filled. This leads to in three partitions (an empty partition at both ends, plus
 For our example where we keep 10 days worth of data up to 10th of May, this gives the following boundaries.
 
 ```SQL
+CREATE PARTITION FUNCTION pf_daily_staging(datetime2)
 AS RANGE RIGHT FOR VALUES (
     '20200501',
     '20200502');
 ```
 
-If you'd like to define that programmatically, you could do that in SQL.
+If you'd like to define that programmatically, you could do that in T-SQL.
 
 ```SQL
 DECLARE @ndays int = 10;
@@ -199,16 +181,7 @@ EXEC sp_executesql @sql
 
 Given these boundaries the empty staging table would have the following structure.
 
-```pre
- +-----------+----------+--------+-----------+
- | Partition |    1     |   2    |   3       |
- +-----------+----------+--------+-----------+
- | Boundary  | < 01 May | 01 May | &GreaterEqual; 02 May |
- +-----------+----------+--------+-----------+
- | Content   |  empty   | empty  |   empty   |
- +-----------+----------+--------+-----------+
-
-```
+![staging partitions](/images/staging.png)
 
 Having a partition function only is not sufficient, we also need to define a partition scheme and apply the staging
 partition function to the staging table which will have the same structure as the source table.
@@ -228,10 +201,10 @@ CREATE TABLE orders_staging (
     [order_date] DATETIME2(7) NOT NULL,
     [order_amount] BIGINT NOT NULL DEFAULT 0,
     [product_id] BIGINT NOT NULL,
-	...
+    ...
     [order_code] VARCHAR(32) NULL,
     PRIMARY KEY ([customer_id], [order_date])
-) ON pf_daily_staging([order_date]);
+) ON ps_daily_staging([order_date]);
 ```
 
 ### The switch
@@ -304,43 +277,18 @@ Now we've documented all the steps, we can put the workflow together.
 
 ## The orchestration
 
-Before we start the archival we need to make sure that there's sufficient partitions within the source table for
-new data (keeping in mind that we'd like to have an empty partition at both ends at all times). The stored procedure
-below uses the metadata to find out the existing last partition and creates a new one.
+We'll be using Azure Data Factory to implement the workflow. In principle the whole flow consists of 3 steps performed
+nightly; switch oldest partition from the source table to the staging table, copy from the staging table to the warm
+data store and finally prepare for next day by altering the partition boundaries for both source and staging tables
+before cleaning up the staging table.
 
-```SQL
-CREATE OR ALTER PROCEDURE usp_new_partition
-    @lastDay AS datetime2 = NULL
-AS
-BEGIN
+db_reader/writer
+GRANT EXECUTE to df managed identity
 
-IF NULLIF(@lastDate, '') IS NULL
-SET @lastDay = CAST(
-    (SELECT TOP 1 [value] FROM sys.partition_range_values
-        WHERE function_id = (
-            SELECT function_id FROM sys.partition_functions
-               WHERE [name] = 'pf_daily_order'
-            )
-        ORDER BY boundary_id DESC
-    ) AS datetime2)
+### Steps
 
-SET @lastDay = DATEADD(DAY, 1, @lastDay)
-
-ALTER PARTITION SCHEME ps_daily_order
-NEXT USED [PRIMARY];
-
-ALTER PARTITION FUNCTION pf_daily_order()
-SPLIT RANGE (@lastDay);
-
-END
-```
-
-Now we can focus on the switch part, again through a stored procedure.
-
-```SQL
-CREATE OR ALTER PROCEDURE usp_switch_and_merge_partition AS
-BEGIN
-
-
-END
-```
+- Create hot & warm data stores
+- Create and configure data factory with the data stores
+- Initialize hot & warm store (initial setup & stored procedures)
+  - Configure service principal to be the SQL admin
+- Give permissions to the data factory on the data stores
