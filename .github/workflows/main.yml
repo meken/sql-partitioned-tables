@@ -72,7 +72,7 @@ jobs:
       with:
         server-name: ${{ jobs.prepare.steps.resource_setup.outputs.hot_store_server }}
         connection-string: ${{ jobs.prepare.steps.resource_setup.outputs.hot_store_connection }}
-        sql-file: 'sql/usp-switch-partition-hot.sql',sql\usp-prepare-for-next-day-hot.sql
+        sql-file: 'sql/usp-switch-partition-hot.sql'
     - name: Create stored procedures in hot store 2/2
       uses: azure/sql-action@v1
       with:
