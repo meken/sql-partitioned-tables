@@ -1,13 +1,23 @@
 -- Source table
+DROP TABLE IF EXISTS orders;
+
+IF EXISTS(SELECT 1 FROM sys.partition_functions WHERE [name] = 'pf_daily')
+    DROP PARTITION FUNCTION pf_daily;
+
+IF EXISTS(SELECT 1 FROM sys.partition_schemes WHERE [name] = 'ps_daily')
+    DROP PARTITION SCHEME ps_daily;
+GO
 
 CREATE PARTITION FUNCTION pf_daily(datetime2)
 AS RANGE RIGHT FOR VALUES (
     '20200501', '20200502', '20200503', '20200504',
     '20200505', '20200506', '20200507', '20200508',
     '20200509', '20200510', '20200511', '20200512');
+GO
 
 CREATE PARTITION SCHEME ps_daily
 AS PARTITION pf_daily ALL TO ([PRIMARY]);
+GO
 
 CREATE TABLE orders (
     [customer_id] BIGINT NOT NULL,
@@ -25,16 +35,29 @@ CREATE TABLE orders (
     [order_code] VARCHAR(32) NULL,
     PRIMARY KEY ([customer_id], [order_date])
 ) ON ps_daily([order_date]);
+GO
 
 -- Staging table
+
+DROP TABLE IF EXISTS orders_staging;
+
+IF EXISTS(SELECT 1 FROM sys.partition_functions WHERE [name] = 'pf_daily_staging')
+    DROP PARTITION FUNCTION pf_daily_staging;
+
+IF EXISTS(SELECT 1 FROM sys.partition_schemes WHERE [name] = 'ps_daily_staging')
+    DROP PARTITION SCHEME ps_daily_staging;
+GO
+
 
 CREATE PARTITION FUNCTION pf_daily_staging(datetime2)
 AS RANGE RIGHT FOR VALUES (
     '20200501',
     '20200502');
+GO
 
 CREATE PARTITION SCHEME ps_daily_staging
 AS PARTITION pf_daily_staging ALL TO ([PRIMARY]);
+GO
 
 CREATE TABLE orders_staging (
     [customer_id] BIGINT NOT NULL,
@@ -52,3 +75,4 @@ CREATE TABLE orders_staging (
     [order_code] VARCHAR(32) NULL,
     PRIMARY KEY ([customer_id], [order_date])
 ) ON ps_daily_staging([order_date]);
+GO

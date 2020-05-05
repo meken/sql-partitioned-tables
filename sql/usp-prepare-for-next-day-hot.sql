@@ -45,3 +45,4 @@ BEGIN
 
     TRUNCATE TABLE orders_staging;
 END
+GO

@@ -1,3 +1,6 @@
+DROP TABLE IF EXISTS orders;
+GO
+
 CREATE TABLE orders (
     [customer_id] BIGINT NOT NULL,
     [order_date] DATETIME2(7) NOT NULL,
@@ -14,3 +17,4 @@ CREATE TABLE orders (
     [order_code] VARCHAR(32) NULL,
     PRIMARY KEY ([customer_id], [order_date])
 )
+GO
