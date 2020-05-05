@@ -1,0 +1,139 @@
+name: CICD
+
+on:
+  push:
+    paths-ignore:
+    - '**.md'
+
+env:
+  JAVA_VERSION: '1.8'
+  RESOURCE_GROUP: 'rg-partition-table-demo'
+  BASE_NAME: 'par'
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v2
+    - name: Azure Login
+      uses: azure/login@v1
+      with:
+        creds: ${{ secrets.AZURE_CREDENTIALS }}
+    - name: Set up Hot & Warm databases and Data Factory
+      uses: azure/CLI@v1
+      id: resource_setup
+      with:
+        azcliversion: latest
+        inlineScript: |
+          OUT=`az group deployment create -g ${{ env.RESOURCE_GROUP }} \
+                    --template-file infra/databases-and-data-factory.json \
+                    --parameters baseName="${{ env.BASE_NAME }}" \
+                    --query properties.outputs`
+          echo "::set-output name=factory_name::$???"
+          echo "::set-output name=hot_store_server:$???"
+          echo "::set-output name=hot_store_connection:$???"
+          echo "::set-output name=warm_store_server:$???"
+          echo "::set-output name=warm_store_connection:$???"
+    - name: Prepare permissions for Data Factory
+      run: |
+        FACTORY_NAME=${{ steps.resource_setup.outputs.factory_name }}
+        sed -i "s/<data-factory>/${FACTORY_NAME}/g" sql/data-factory-permissions-*.sql
+    - name: Upload SQL scripts for execution
+      uses: actions/upload-artifact@v2
+      with:
+        name: sql
+        path: sql/
+    - name: Upload Data Factory resources for deployment
+      uses: actions/upload-artifact@v2
+      with:
+        name: arm
+        path: infra/data-factory-resources.json
+  database_setup:
+    needs: prepare
+    runs-on: windows-latest
+    steps:
+    - name: Download SQL scripts
+      uses: actions/download-artifact@v1
+      with:
+        name: sql
+    - name: Azure Login
+      uses: azure/login@v1
+      with:
+        creds: ${{ secrets.AZURE_CREDENTIALS }}
+    - name: Create tables in hot store
+      uses: azure/sql-action@v1
+      with:
+        server-name: ${{ jobs.prepare.steps.resource_setup.outputs.hot_store_server }}
+        connection-string: ${{ jobs.prepare.steps.resource_setup.outputs.hot_store_connection }}
+        sql-file: 'sql/initial-setup-hot.sql'
+    - name: Create stored procedures in hot store 1/2  # bah, no wildcards supported
+      uses: azure/sql-action@v1
+      with:
+        server-name: ${{ jobs.prepare.steps.resource_setup.outputs.hot_store_server }}
+        connection-string: ${{ jobs.prepare.steps.resource_setup.outputs.hot_store_connection }}
+        sql-file: 'sql/usp-switch-partition-hot.sql',sql\usp-prepare-for-next-day-hot.sql
+    - name: Create stored procedures in hot store 2/2
+      uses: azure/sql-action@v1
+      with:
+        server-name: ${{ jobs.prepare.steps.resource_setup.outputs.hot_store_server }}
+        connection-string: ${{ jobs.prepare.steps.resource_setup.outputs.hot_store_connection }}
+        sql-file: 'sql/usp-prepare-for-next-day-hot.sql'
+    - name: Give permissions to Data Factory in hot store
+      uses: azure/sql-action@v1
+      with:
+        server-name: ${{ jobs.prepare.steps.resource_setup.outputs.hot_store_server }}
+        connection-string: ${{ jobs.prepare.steps.resource_setup.outputs.hot_store_connection }}
+        sql-file: 'sql/data-factory-permissions-hot.sql'
+    - name: Create tables in warm store
+      uses: azure/sql-action@v1
+      with:
+        server-name: ${{ jobs.prepare.steps.resource_setup.outputs.warm_store_server }}
+        connection-string: ${{ jobs.prepare.steps.resource_setup.outputs.warm_store_connection }}
+        sql-file: 'sql/initial-setup-warm.sql'
+    - name: Give permissions to Data Factory in warm store
+      uses: azure/sql-action@v1
+      with:
+        server-name: ${{ jobs.prepare.steps.resource_setup.outputs.warm_store_server }}
+        connection-string: ${{ jobs.prepare.steps.resource_setup.outputs.warm_store_connection }}
+        sql-file: 'sql/data-factory-permissions-warm.sql'
+  random_data:
+    needs: database_setup
+    runs-on: windows-latest
+    steps:
+    - name: Download SQL scripts
+      uses: actions/download-artifact@v1
+      with:
+        name: sql
+    - name: Azure Login
+      uses: azure/login@v1
+      with:
+        creds: ${{ secrets.AZURE_CREDENTIALS }}
+    - name: Create tables in hot store
+      uses: azure/sql-action@v1
+      with:
+        server-name: ${{ jobs.prepare.steps.resource_setup.outputs.hot_store_server }}
+        connection-string: ${{ jobs.prepare.steps.resource_setup.outputs.hot_store_connection }}
+        sql-file: 'sql/fill-source-with-random-data-hot.sql'
+  data_factory_resources:
+    needs: database_setup
+    runs-on: ubuntu-latest
+    steps:
+    - name: Download ARM template
+      uses: actions/download-artifact@v1
+      with:
+        name: arm
+    - name: Azure Login
+      uses: azure/login@v1
+      with:
+        creds: ${{ secrets.AZURE_CREDENTIALS }}
+    - name: Set up Data Factory resources (datasets/pipelines/triggers)
+      uses: azure/CLI@v1
+      with:
+        azcliversion: latest
+        inlineScript: |
+          az group deployment create -g ${{ env.RESOURCE_GROUP }} \
+                    --template-file infra/data-factory-resources.json \
+                    --parameters baseName="${{ env.BASE_NAME }}"
+
+
