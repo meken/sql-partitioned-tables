@@ -1,0 +1,141 @@
+{
+    "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+    "contentVersion": "1.0.0.0",
+    "parameters": {
+        "baseName": {
+            "type": "string",
+            "metadata": {
+                "description": "Used to create unique resource names"
+            },
+            "minLength": 2,
+            "maxLength": 6
+        },
+        "sqlServerAdminUser": {
+            "type": "string"
+        },
+        "sqlServerAdminPassword": {
+            "type": "string"
+        },
+        "sqlServerADAdminLogin": {
+            "type": "string"
+        },
+        "sqlServerADAdminObjectId": {
+            "type": "string"
+        },
+        "sqlServerADAdminTenantId": {
+            "type": "string"
+        }
+    },
+    "variables": {
+        "location": "[resourceGroup().location]",
+        "suffix": "[toLower(substring(concat(parameters('baseName'), '-', uniqueString(resourceGroup().id)), 0, 10))]",
+        "factoryName": "[concat('adf-', variables('suffix'))]",
+        "sqlServerName": "[concat('sql-', variables('suffix'))]",
+        "sqlHotDatabaseName": "sqldb-hot",
+        "sqlWarmDatabaseName": "sqldb-warm",
+        "sqlHotDatabaseTier": "GP_Gen5_2",
+        "sqlWarmDatabaseTier": "GP_Gen5_2"
+    },
+    "resources": [
+        {
+            "name": "[variables('sqlServerName')]",
+            "type": "Microsoft.Sql/servers",
+            "apiVersion": "2019-06-01-preview",
+            "location": "[variables('location')]",
+            "properties": {
+                "administratorLogin": "[parameters('sqlServerAdminUser')]",
+                "administratorLoginPassword": "[parameters('sqlServerAdminPassword')]",
+                "version": "12.0"
+            },
+            "resources": [
+                {
+                    "name": "activeDirectory",
+                    "type": "administrators",
+                    "apiVersion": "2014-04-01",
+                    "properties": {
+                        "administratorType": "ActiveDirectory",
+                        "login": "[parameters('sqlServerADAdminLogin')]",
+                        "sid": "[parameters('sqlServerADAdminObjectId')]",
+                        "tenantId": "[parameters('sqlServerADAdminTenantId')]"
+                    },
+                    "dependsOn": [
+                        "[resourceId('Microsoft.Sql/servers', variables('sqlServerName'))]"
+                    ]
+                },
+                {
+                    "name": "AllowAllMicrosoftAzureIps",
+                    "type": "firewallrules",
+                    "apiVersion": "2014-04-01",
+                    "properties": {
+                        "endIpAddress": "0.0.0.0",
+                        "startIpAddress": "0.0.0.0"
+                    },
+                    "dependsOn": [
+                        "[resourceId('Microsoft.Sql/servers', variables('sqlServerName'))]"
+                    ]
+                },
+                {
+                    "name": "[variables('sqlHotDatabaseName')]",
+                    "type": "databases",
+                    "apiVersion": "2019-06-01-preview",
+                    "location": "[variables('location')]",
+                    "sku": {
+                        "name": "[variables('sqlHotDatabaseTier')]"
+                    },
+                    "properties": {
+                        "zoneRedundant": false
+                    },
+                    "dependsOn": [
+                        "[resourceId('Microsoft.Sql/servers', variables('sqlServerName'))]"
+                    ]
+
+                },
+                {
+                    "name": "[variables('sqlWarmDatabaseName')]",
+                    "type": "databases",
+                    "apiVersion": "2019-06-01-preview",
+                    "location": "[variables('location')]",
+                    "sku": {
+                        "name": "[variables('sqlWarmDatabaseTier')]"
+                    },
+                    "properties": {
+                        "zoneRedundant": false
+                    },
+                    "dependsOn": [
+                        "[resourceId('Microsoft.Sql/servers', variables('sqlServerName'))]"
+                    ]
+                }
+            ]
+        },
+        {
+            "name": "[variables('factoryName')]",
+            "apiVersion": "2018-06-01",
+            "type": "Microsoft.DataFactory/factories",
+            "location": "[variables('location')]",
+            "identity": {
+                "type": "SystemAssigned"
+            },
+            "properties": {
+
+            }
+        }
+    ],
+    "outputs": {
+        "sqlServerFqdn": {
+            "type": "string",
+            "value": "[reference(concat('Microsoft.Sql/servers/', variables('sqlServerName'))).fullyQualifiedDomainName]"
+        },
+        "sqlServerHotStoreConnection": {
+            "type": "string",
+            "value": "[concat('Server=tcp:',reference(concat('Microsoft.Sql/servers/', variables('sqlServerName'))).fullyQualifiedDomainName,'1433;Initial Catalog=',variables('sqlHotDatabaseName'),';Persist Security Info=False;User ID=',parameters('sqlServerAdminUser'),';Password=',parameters('sqlServerAdminPassword'),';MultipleActiveResultSets=False;Encrypt=True;TrustServerCertificate=False;Connection Timeout=30;')]"
+        },
+        "sqlServerWarmStoreConnection": {
+            "type": "string",
+            "value": "[concat('Server=tcp:',reference(concat('Microsoft.Sql/servers/', variables('sqlServerName'))).fullyQualifiedDomainName,'1433;Initial Catalog=',variables('sqlWarmDatabaseName'),';Persist Security Info=False;User ID=',parameters('sqlServerAdminUser'),';Password=',parameters('sqlServerAdminPassword'),';MultipleActiveResultSets=False;Encrypt=True;TrustServerCertificate=False;Connection Timeout=30;')]"
+        },
+        "factoryName": {
+            "type": "string",
+            "value": "[variables('factoryName')]"
+        }
+    }
+}
