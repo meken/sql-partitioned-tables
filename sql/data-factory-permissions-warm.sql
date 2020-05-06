@@ -1,5 +1,5 @@
-IF EXISTS(SELECT 1 FROM sys.database_principals WHERE [NAME] = '<data-factory>')
-    DROP USER [<data-factory>];
+DROP USER IF EXISTS [<data-factory>];
+CREATE USER [<data-factory>] FROM EXTERNAL PROVIDER;
 GO
 
 CREATE USER [<data-factory>] FROM EXTERNAL PROVIDER;
