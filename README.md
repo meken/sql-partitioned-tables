@@ -277,18 +277,72 @@ Now we've documented all the steps, we can put the workflow together.
 
 ## The orchestration
 
-We'll be using Azure Data Factory to implement the workflow. In principle the whole flow consists of 3 steps performed
-nightly; switch oldest partition from the source table to the staging table, copy from the staging table to the warm
-data store and finally prepare for next day by altering the partition boundaries for both source and staging tables
-before cleaning up the staging table.
+We'll be using Azure Data Factory to implement the workflow. In principle the whole flow consists of 3 simple steps
+performed nightly; switching the oldest (non-empty) partition from the source table to the staging table, copying from
+the staging table to the warm data store and finally preparing for next day by altering the partition boundaries for
+both source and staging tables before cleaning up the staging table.
 
 db_reader/writer
 GRANT EXECUTE to df managed identity
 
-### Steps
+## Automation
 
-- Create hot & warm data stores
-- Create and configure data factory with the data stores
-- Initialize hot & warm store (initial setup & stored procedures)
-  - Configure service principal to be the SQL admin
-- Give permissions to the data factory on the data stores
+This repository includes a Github actions pipeline for automating the whole setup. The pipeline creates all of the
+required resources, such as the databases, data factory for orchestration and the data factory pipeline. As part of the
+build process, all tables and their corresponding attributes (partition schemes/functions & random data) are added in
+and idempotent fashion.
+
+One of the challenges, that's addressed by the pipeline, is the automatic addition of the managed Data Factory identity
+to the databases so that the data factory can execute its pipelines without any manual intervention and storing any
+credentials. At the time of this writing the process of adding a managed identity (or any other AD user) to an
+Azure SQL Database is far from trivial. It requires an AD user to be logged in to add an _external user_ (managed
+identity or any other AD user); unfortunately the service principal that's used for the build automation, cannot be
+directly used for this purpose. So, the first step is to make sure that there's an AD group which includes the service
+principal as a member, and to make that group the AD admin user for the SQL Server. This at least allows the service principal to
+log in as an AD user, but unfortunately isn't sufficient to add an _external user_ using the standard methods. The next
+step is the creation of a user object with some fields set to specific values, meaning that we need to calculate and
+provide some specific information, namely the `SID` (Security Identifier). The `SID` is a binary field that's based on
+the client id of the Data Factory managed identity (which is a 16 byte GUID). It's basically the (little endian)
+byte representation that's formatted as a hex string and passed as a literal to the create user statement (believe me,
+I'm not making this up :confused:). Another complexity is that the Data Factory only provides its object id (principal id),
+so based on that the client id must be looked up. As a consequence, the build service principal must have read
+permissions to read from the AD to automate the whole thing.
+
+```bash
+DATA_FACTORY_OBJECT_ID=...  # get from the ARM template output
+DATA_FACTORY_CLIENT_ID=`az ad sp show --id "$DATA_FACTORY_OBJECT_ID" --query appId -o tsv`
+```
+
+In the build pipeline a SQL query is used to convert the client id to the proper `SID` format, but you could do that
+using various methods, see below for a python option.
+
+```python
+import uuid
+
+DATA_FACTORY_CLIENT_ID=...  # pass as parameter or env variable
+src = uuid.UUID(DATA_FACTORY_CLIENT_ID).bytes_le
+print("0x" + "".join("{:02x}".format(b) for b in src)
+```
+
+Once all the information is prepared with respect to the managed identity, the service principal that's part of the
+AD group that has been assigned as the admin for the SQL Server, needs to execute the create statements. Unfortunately,
+the `sqlcmd` tool, used for running other SQL scripts in the pipeline, doesn't support authentication through service
+principal credentials or access tokens. So, instead, a simple PowerShell script is used for connecting to the databases
+and running the create user/grant permission statements.
+
+```powershell
+$ConnectionString = ...  # the connection string for the database without credentials
+$Query = ... # query to run
+$AccessToken = az account get-access-token --resource https://database.windows.net --query accessToken -o tsv
+
+$Connection = New-Object System.Data.SqlClient.SqlConnection($ConnectionString)
+$Connection.AccessToken = $AccessToken
+
+$Connection.Open()
+try {
+    $SqlCmd = New-Object System.Data.SqlClient.SqlCommand($Query, $Connection)
+    $SqlCmd.ExecuteNonQuery()
+} finally {
+    $Connection.Close()
+}
+```
