@@ -10,7 +10,7 @@
             "minLength": 2,
             "maxLength": 6
         },
-        "sqlServerAdminUser": {
+        "sqlServerAdminLogin": {
             "type": "string"
         },
         "sqlServerAdminPassword": {
@@ -43,7 +43,7 @@
             "apiVersion": "2019-06-01-preview",
             "location": "[variables('location')]",
             "properties": {
-                "administratorLogin": "[parameters('sqlServerAdminUser')]",
+                "administratorLogin": "[parameters('sqlServerAdminLogin')]",
                 "administratorLoginPassword": "[parameters('sqlServerAdminPassword')]",
                 "version": "12.0"
             },
@@ -125,25 +125,28 @@
             "type": "string",
             "value": "[reference(concat('Microsoft.Sql/servers/', variables('sqlServerName'))).fullyQualifiedDomainName]"
         },
+        "hotStore": {
+            "type": "string",
+            "value": "[variables('sqlHotDatabaseName')]"
+        },
+        "warmStore": {
+            "type": "string",
+            "value": "[variables('sqlWarmDatabaseName')]"
+        },
         "sqlServerHotStoreConnection": {
-            "type": "string",
-            "value": "[concat('Server=tcp:',reference(concat('Microsoft.Sql/servers/', variables('sqlServerName'))).fullyQualifiedDomainName,',1433;Initial Catalog=',variables('sqlHotDatabaseName'),';Persist Security Info=False;User ID=',parameters('sqlServerAdminUser'),';Password=',parameters('sqlServerAdminPassword'),';MultipleActiveResultSets=False;Encrypt=True;TrustServerCertificate=False;Connection Timeout=30;')]"
-        },
-        "sqlServerWarmStoreConnection": {
-            "type": "string",
-            "value": "[concat('Server=tcp:',reference(concat('Microsoft.Sql/servers/', variables('sqlServerName'))).fullyQualifiedDomainName,',1433;Initial Catalog=',variables('sqlWarmDatabaseName'),';Persist Security Info=False;User ID=',parameters('sqlServerAdminUser'),';Password=',parameters('sqlServerAdminPassword'),';MultipleActiveResultSets=False;Encrypt=True;TrustServerCertificate=False;Connection Timeout=30;')]"
-        },
-        "sqlServerHotStoreConnectionSimple": {
             "type": "string",
             "value": "[concat('Data Source=',reference(concat('Microsoft.Sql/servers/', variables('sqlServerName'))).fullyQualifiedDomainName,';Initial Catalog=',variables('sqlHotDatabaseName'),';Encrypt=True;Connection Timeout=30;')]"
         },
-        "sqlServerWarmStoreConnectionSimple": {
+        "sqlServerWarmStoreConnection": {
             "type": "string",
             "value": "[concat('Data Source=',reference(concat('Microsoft.Sql/servers/', variables('sqlServerName'))).fullyQualifiedDomainName,';Initial Catalog=',variables('sqlWarmDatabaseName'),'Encrypt=True;Connection Timeout=30;')]"
         },
         "factoryName": {
             "type": "string",
             "value": "[variables('factoryName')]"
-        }
+        },
+        "factoryPrincipalId": {
+            "type": "string",
+            "value": "[reference(concat('Microsoft.DataFactory/factories/', variables('factoryName')), '2018-06-01', 'Full').identity.principalId]"
     }
 }
