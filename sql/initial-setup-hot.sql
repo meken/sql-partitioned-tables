@@ -1,11 +1,11 @@
 -- Source table
 DROP TABLE IF EXISTS orders;
 
-IF EXISTS(SELECT 1 FROM sys.partition_functions WHERE [name] = 'pf_daily')
-    DROP PARTITION FUNCTION pf_daily;
-
 IF EXISTS(SELECT 1 FROM sys.partition_schemes WHERE [name] = 'ps_daily')
     DROP PARTITION SCHEME ps_daily;
+
+IF EXISTS(SELECT 1 FROM sys.partition_functions WHERE [name] = 'pf_daily')
+    DROP PARTITION FUNCTION pf_daily;
 GO
 
 CREATE PARTITION FUNCTION pf_daily(datetime2)
@@ -41,11 +41,11 @@ GO
 
 DROP TABLE IF EXISTS orders_staging;
 
-IF EXISTS(SELECT 1 FROM sys.partition_functions WHERE [name] = 'pf_daily_staging')
-    DROP PARTITION FUNCTION pf_daily_staging;
-
 IF EXISTS(SELECT 1 FROM sys.partition_schemes WHERE [name] = 'ps_daily_staging')
     DROP PARTITION SCHEME ps_daily_staging;
+
+IF EXISTS(SELECT 1 FROM sys.partition_functions WHERE [name] = 'pf_daily_staging')
+    DROP PARTITION FUNCTION pf_daily_staging;
 GO
 
 

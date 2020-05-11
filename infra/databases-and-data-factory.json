@@ -125,11 +125,11 @@
             "type": "string",
             "value": "[reference(concat('Microsoft.Sql/servers/', variables('sqlServerName'))).fullyQualifiedDomainName]"
         },
-        "hotStore": {
+        "sqlServerHotStoreDatabase": {
             "type": "string",
             "value": "[variables('sqlHotDatabaseName')]"
         },
-        "warmStore": {
+        "sqlServerWarmStoreDatabase": {
             "type": "string",
             "value": "[variables('sqlWarmDatabaseName')]"
         },
@@ -139,7 +139,7 @@
         },
         "sqlServerWarmStoreConnection": {
             "type": "string",
-            "value": "[concat('Data Source=',reference(concat('Microsoft.Sql/servers/', variables('sqlServerName'))).fullyQualifiedDomainName,';Initial Catalog=',variables('sqlWarmDatabaseName'),'Encrypt=True;Connection Timeout=30;')]"
+            "value": "[concat('Data Source=',reference(concat('Microsoft.Sql/servers/', variables('sqlServerName'))).fullyQualifiedDomainName,';Initial Catalog=',variables('sqlWarmDatabaseName'),';Encrypt=True;Connection Timeout=30;')]"
         },
         "factoryName": {
             "type": "string",
@@ -148,5 +148,6 @@
         "factoryPrincipalId": {
             "type": "string",
             "value": "[reference(concat('Microsoft.DataFactory/factories/', variables('factoryName')), '2018-06-01', 'Full').identity.principalId]"
+        }
     }
 }
