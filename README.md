@@ -2,7 +2,7 @@
 
 Azure SQL Database supports horizontal partitioning of table data for manageability and performance benefits as
 explained in the [docs](https://docs.microsoft.com/en-us/sql/relational-databases/partitions/partitioned-tables-and-indexes?view=azuresqldb-current).
-Although most of this capability is explained and documented in various places (see the related content in the docs),
+Although most of this capability is explained and documented in various places (see the [related content](https://docs.microsoft.com/en-us/sql/relational-databases/partitions/partitioned-tables-and-indexes?view=azuresqldb-current#related-content) in the docs),
 this repository attempts to demonstrate how to work with partitioned tables and sliding windows using Azure
 resources for a specific example scenario.
 
@@ -56,7 +56,7 @@ already storing data in tomorrow's partition, we'll add another partition as a b
 Let's assume that today is 10th of May and we'd like to keep the last 10 days worth of data (including today). This
 would require us to have the following structure.
 
-![source partitions](/images/source.png)
+![source partitions](images/source.png)
 
 Partitioning a table is a three step process, we first need to define a partition function to define the partition
 boundaries, followed by a partition scheme to map partitions to filegroups and then apply the partition scheme to
@@ -181,7 +181,7 @@ EXEC sp_executesql @sql
 
 Given these boundaries the empty staging table would have the following structure.
 
-![staging partitions](/images/staging.png)
+![staging partitions](images/staging.png)
 
 Having a partition function only is not sufficient, we also need to define a partition scheme and apply the staging
 partition function to the staging table which will have the same structure as the source table.
@@ -282,6 +282,8 @@ performed nightly; switching the oldest (non-empty) partition from the source ta
 the staging table to the warm data store and finally preparing for next day by altering the partition boundaries for
 both source and staging tables before cleaning up the staging table.
 
+![ADF Pipeline](images/adf-pipeline.png)
+
 db_reader/writer
 GRANT EXECUTE to df managed identity
 
@@ -298,14 +300,14 @@ credentials. At the time of this writing the process of adding a managed identit
 Azure SQL Database is far from trivial. It requires an AD user to be logged in to add an _external user_ (managed
 identity or any other AD user); unfortunately the service principal that's used for the build automation, cannot be
 directly used for this purpose. So, the first step is to make sure that there's an AD group which includes the service
-principal as a member, and to make that group the AD admin user for the SQL Server. This at least allows the service principal to
-log in as an AD user, but unfortunately isn't sufficient to add an _external user_ using the standard methods. The next
+principal as a member, and then make that group the AD admin user for the SQL Server. This at least allows the service principal to
+log in as an AD user, but it unfortunately isn't sufficient to add an _external user_ using the standard methods. The next
 step is the creation of a user object with some fields set to specific values, meaning that we need to calculate and
 provide some specific information, namely the `SID` (Security Identifier). The `SID` is a binary field that's based on
 the client id of the Data Factory managed identity (which is a 16 byte GUID). It's basically the (little endian)
 byte representation that's formatted as a hex string and passed as a literal to the create user statement (believe me,
 I'm not making this up :confused:). Another complexity is that the Data Factory only provides its object id (principal id),
-so based on that the client id must be looked up. As a consequence, the build service principal must have read
+so based on that, the client id must be looked up. As a consequence, the build service principal must have read
 permissions to read from the AD to automate the whole thing.
 
 ```bash
