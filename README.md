@@ -10,7 +10,7 @@ resources for a specific example scenario.
 
 In this example scenario we'll be designing a solution that consists of two data stores. One _hot_ data store for
 keeping the most recent data, and a _warm_ data store for archival purposes. Depending on the requirements of your
-solution you can choose from different solutions, but for this example we'll consider RDMBSs for both data stores,
+solution you can choose from different storage options, but for this example we'll consider RDMBSs for both data stores,
 albeit using different tiers for cost/performance optimizations.
 
 ## The solution architecture
@@ -41,11 +41,11 @@ the staging table is truncated, getting ready for the next day.
 In order to simplify things, we'll be assuming that the data is in a single table `orders`, which has a clustered
 index on `customer_id` and `order_date` columns. The `order_date` will be used for partitioning, and the
 table won't have any other indexes as all reads happen through `customer_id` column and we want to keep the
-indexes to a minimum to ensure that writes are lightning quick.
+indexes to a minimum to ensure that writes are lightning quick in the hot data store.
 
 In this example we'll be keeping the data in the hot data store for 10 days before it gets copied to the warm store.
 So, we'll have to have at least 10 partitions in the hot table. However, in order to minimize expensive data movement
-during partition maintenance of a sliding window it's recommended to keep the first and the last partitions empty. That
+during partition maintenance of a sliding window, it's recommended to keep the first and the last partitions empty. That
 leads to two more partitions at the both ends of the date range. In addition, we'll be probably doing the
 partition switching nightly, and to ensure that we have an empty partition at all times, as at night we're
 already storing data in tomorrow's partition, we'll add another partition as a buffer. So, we end up with 13 partitions.
@@ -124,7 +124,7 @@ Now we have the partition scheme and function set up, we can create the table an
 
 ### The partitioned table
 
-This is pretty trivial as well, all we need to do is to apply the partition function to the the proper partition
+This is pretty trivial as well, all we need to do is to apply the partition scheme to the the proper partition
 column when creating the table.
 
 ```SQL
@@ -149,7 +149,7 @@ staging table is also partitioned using aligned boundaries.
 ### The staging table
 
 The staging table is very similar to the source table, the only difference is that it will have at most 1 partition
-filled. This leads to in three partitions (an empty partition at both ends, plus the data partition) and hence
+filled. This leads to three partitions (an empty partition at both ends, plus the data partition) and hence
 2 boundaries.
 
 For our example where we keep 10 days worth of data up to 10th of May, this gives the following boundaries.
@@ -184,7 +184,7 @@ Given these boundaries the empty staging table would have the following structur
 ![staging partitions](images/staging.png)
 
 Having a partition function only is not sufficient, we also need to define a partition scheme and apply the staging
-partition function to the staging table which will have the same structure as the source table.
+partition scheme to the staging table which will have the same structure as the source table.
 
 The partition scheme.
 
@@ -219,7 +219,8 @@ TO orders_staging PARTITION 2;
 ```
 
 After having done this, the corresponding partition in the source table becomes empty and the staging table can be
-used to copy the data to the warm data store. For this purpose we can use Azure Data Factory and that will be illustrated in the orchestration section of this document.
+used to copy the data to the warm data store. For this purpose we can use Azure Data Factory and that will be
+illustrated in the orchestration section of this document.
 
 ### The cleanup
 
@@ -284,15 +285,25 @@ both source and staging tables before cleaning up the staging table.
 
 ![ADF Pipeline](images/adf-pipeline.png)
 
-db_reader/writer
-GRANT EXECUTE to df managed identity
-
 ## Automation
 
 This repository includes a Github actions pipeline for automating the whole setup. The pipeline creates all of the
 required resources, such as the databases, data factory for orchestration and the data factory pipeline. As part of the
 build process, all tables and their corresponding attributes (partition schemes/functions & random data) are added in
 and idempotent fashion.
+
+The steps are as follows:
+
+1. Create the Azure SQL Databases and Azure Data Factory through ARM template
+2. Turn off the Azure SQL Database firewall for the build agent so that the SQL scripts can be executed
+3. Create the tables and stored procedures in the hot data store
+4. Create the tables in the warm data store
+5. Add the Data Factory Managed Identity to both databases and assign the proper roles
+6. Insert random data into the hot data store
+7. Turn back on the Azure SQL Database firewall for the build agent
+8. Deploy the Azure Data Factory Pipeline through ARM template
+
+### Azure Data Factory and its Managed Identity on Azure SQL Database
 
 One of the challenges, that's addressed by the pipeline, is the automatic addition of the managed Data Factory identity
 to the databases so that the data factory can execute its pipelines without any manual intervention and storing any
@@ -348,3 +359,19 @@ try {
     $Connection.Close()
 }
 ```
+
+## Summary
+
+This repository should help you with
+
+- Setting up a SQL Server Partitioned Table
+- Configuring an Azure Data Factory Pipeline for copying data from one database to another one
+- Adding the Azure Data Factory Managed Identity to an Azure SQL Database as an external user
+- Inserting random data into a database table efficiently
+- Automating the whole setup in a Github Actions pipeline
+
+In order to run the automation, you need to make sure that the build service principal
+
+- has Contributor rights on the resource group
+- is part of an existing Active Directory Group (which will become the admin for the logical Azure SQL Server)
+- has read permissions on the Active Directory Graph (in order to lookup client id information from object ids)

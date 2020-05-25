@@ -79,6 +79,19 @@ jobs:
       uses: actions/download-artifact@v1
       with:
         name: sql
+    - name: Azure Login
+      uses: azure/login@v1
+      with:
+        creds: ${{ secrets.AZURE_CREDENTIALS }}
+    - name: Turn off the firewall for the build agent
+      run: |
+        IP=`curl -s https://ifconfig.me`
+        SERVER=`echo ${{ needs.prepare.outputs.sql_server }} | cut -d"." -f1`
+        az sql server firewall-rule create -g "${{ env.RESOURCE_GROUP }}" \
+          -s "$SERVER" \
+          -n github-build-agent \
+          --start-ip-address "$IP" \
+          --end-ip-address "$IP"
     - name: Create tables in *hot* store
       run: |
         FILES=(
@@ -110,10 +123,6 @@ jobs:
               -P "${{ secrets.SQL_ADMIN_USER_PASSWORD }}" \
               -d master -h -1 -N -l 30 -Q "$SID_QUERY"`
         echo "::set-output name=value::$SID"
-    - name: Azure Login
-      uses: azure/login@v1
-      with:
-        creds: ${{ secrets.AZURE_CREDENTIALS }}
     - name: Retrieve access token to log into databases
       uses: azure/CLI@v1
       id: access_token
@@ -138,14 +147,6 @@ jobs:
           -AccessToken "${{ steps.access_token.outputs.value }}" `
           -DataFactoryName "${{ needs.prepare.outputs.factory_name }}" `
           -Sid "${{ steps.sid.outputs.value }}"
-  random_data:
-    needs: database_setup
-    runs-on: ubuntu-latest
-    steps:
-    - name: Download SQL scripts
-      uses: actions/download-artifact@v1
-      with:
-        name: sql
     - name: Fill *hot* database with random data
       id: sid
       run: |
@@ -154,6 +155,14 @@ jobs:
             -U "${{ secrets.SQL_ADMIN_USER_LOGIN }}" \
             -P "${{ secrets.SQL_ADMIN_USER_PASSWORD }}" \
             -N -l 30 -i
+    - name: Remove the firewall rule
+      if: ${{ always() }}
+      run: |
+        SERVER=`echo ${{ needs.prepare.outputs.sql_server }} | cut -d"." -f1`
+        az sql server firewall-rule delete -g "${{ env.RESOURCE_GROUP }}" \
+          -s "$SERVER" \
+          -n github-build-agent
+
   data_factory_resources:
     needs: database_setup
     runs-on: ubuntu-latest
