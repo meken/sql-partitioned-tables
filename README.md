@@ -294,32 +294,34 @@ and idempotent fashion.
 
 The steps are as follows:
 
-1. Create the Azure SQL Databases and Azure Data Factory through ARM template
+1. Create the Azure SQL Databases and Azure Data Factory through ARM templates
 2. Turn off the Azure SQL Database firewall for the build agent so that the SQL scripts can be executed
 3. Create the tables and stored procedures in the hot data store
 4. Create the tables in the warm data store
 5. Add the Data Factory Managed Identity to both databases and assign the proper roles
 6. Insert random data into the hot data store
 7. Turn back on the Azure SQL Database firewall for the build agent
-8. Deploy the Azure Data Factory Pipeline through ARM template
+8. Deploy the Azure Data Factory Pipeline through ARM templates
 
 ### Azure Data Factory and its Managed Identity on Azure SQL Database
 
-One of the challenges, that's addressed by the pipeline, is the automatic addition of the managed Data Factory identity
-to the databases so that the data factory can execute its pipelines without any manual intervention and storing any
-credentials. At the time of this writing the process of adding a managed identity (or any other AD user) to an
-Azure SQL Database is far from trivial. It requires an AD user to be logged in to add an _external user_ (managed
-identity or any other AD user); unfortunately the service principal that's used for the build automation, cannot be
-directly used for this purpose. So, the first step is to make sure that there's an AD group which includes the service
-principal as a member, and then make that group the AD admin user for the SQL Server. This at least allows the service principal to
-log in as an AD user, but it unfortunately isn't sufficient to add an _external user_ using the standard methods. The next
+One of the challenges, that's addressed by the pipeline, is the automatic addition of the Data Factory Managed Identity
+to the databases so that Azure Data Factory can execute its pipelines without any manual intervention and storing any
+credentials. At the time of this writing the process of adding a managed identity (or any other Active Directory user) to an
+Azure SQL Database is far from trivial. It requires an Active Directory user to be logged in to add an _external user_ (Managed
+Identity or any other Active Directory user). Unfortunately, the service principal that's used for the build automation, cannot be
+directly used for this purpose. So, the first step is to make sure that there's an Active Directory Group which includes the service
+principal as a member, and then make that group the Active Directory admin user for the SQL Server. This at least allows the service principal to
+log in as an Active Directory user, but it unfortunately isn't sufficient to add an _external user_ using the
+[standard method](https://docs.microsoft.com/en-us/azure/sql-database/sql-database-aad-authentication-configure?tabs=azure-powershell#create-contained-database-users-in-your-database-mapped-to-azure-ad-identities). The next
 step is the creation of a user object with some fields set to specific values, meaning that we need to calculate and
 provide some specific information, namely the `SID` (Security Identifier). The `SID` is a binary field that's based on
-the client id of the Data Factory managed identity (which is a 16 byte GUID). It's basically the (little endian)
-byte representation that's formatted as a hex string and passed as a literal to the create user statement (believe me,
-I'm not making this up :confused:). Another complexity is that the Data Factory only provides its object id (principal id),
+the client id of the to be added Active Directory user, the Data Factory Managed Identity, which is a 16 byte GUID.
+It's basically the (little endian) byte representation that's formatted as a hex string and passed as a literal to the
+create user statement (believe me, I'm not making this up :confused:).
+Another complexity is that Azure Data Factory Managed Identity only provides its object id (principal id),
 so based on that, the client id must be looked up. As a consequence, the build service principal must have read
-permissions to read from the AD to automate the whole thing.
+permissions to read from Active Directory to automate the whole thing.
 
 ```bash
 DATA_FACTORY_OBJECT_ID=...  # get from the ARM template output
