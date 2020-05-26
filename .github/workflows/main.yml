@@ -61,24 +61,12 @@ jobs:
           echo "::set-output name=hot_db::$HOT_DB"
           echo "::set-output name=warm_conn_str::$WARM_CONN"
           echo "::set-output name=warm_db::$WARM_DB"
-    - name: Upload SQL scripts for execution
-      uses: actions/upload-artifact@v2
-      with:
-        name: sql
-        path: sql/
-    - name: Upload Data Factory resources for deployment
-      uses: actions/upload-artifact@v2
-      with:
-        name: arm
-        path: infra/data-factory-resources.json
   database_setup:
     needs: prepare
     runs-on: ubuntu-latest
     steps:
-    - name: Download SQL scripts
-      uses: actions/download-artifact@v1
-      with:
-        name: sql
+    - name: Checkout
+      uses: actions/checkout@v2
     - name: Azure Login
       uses: azure/login@v1
       with:
@@ -161,19 +149,6 @@ jobs:
         az sql server firewall-rule delete -g "${{ env.RESOURCE_GROUP }}" \
           -s "$SERVER" \
           -n github-build-agent
-
-  data_factory_resources:
-    needs: database_setup
-    runs-on: ubuntu-latest
-    steps:
-    - name: Download ARM template
-      uses: actions/download-artifact@v1
-      with:
-        name: arm
-    - name: Azure Login
-      uses: azure/login@v1
-      with:
-        creds: ${{ secrets.AZURE_CREDENTIALS }}
     - name: Set up Data Factory resources (datasets/pipelines/triggers)
       uses: azure/CLI@v1
       with:
