@@ -79,7 +79,8 @@ jobs:
           -s "$SERVER" \
           -n github-build-agent \
           --start-ip-address "$IP" \
-          --end-ip-address "$IP"
+          --end-ip-address "$IP" \
+          -o none
     - name: Create tables in *hot* store
       run: |
         FILES=(
@@ -148,7 +149,8 @@ jobs:
         SERVER=`echo ${{ needs.prepare.outputs.sql_server }} | cut -d"." -f1`
         az sql server firewall-rule delete -g "${{ env.RESOURCE_GROUP }}" \
           -s "$SERVER" \
-          -n github-build-agent
+          -n github-build-agent \
+          -o none
     - name: Set up Data Factory resources (datasets/pipelines/triggers)
       uses: azure/CLI@v1
       with:
@@ -158,5 +160,6 @@ jobs:
             --template-file infra/data-factory-resources.json \
             --parameters factoryName="${{ needs.prepare.outputs.factory_name }}" \
               hotStoreConnection="${{ needs.prepare.outputs.hot_conn_str }}" \
-              warmStoreConnection="${{ needs.prepare.outputs.warm_conn_str }}"
+              warmStoreConnection="${{ needs.prepare.outputs.warm_conn_str }}" \
+            -o none
 
