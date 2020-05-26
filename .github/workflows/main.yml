@@ -148,7 +148,6 @@ jobs:
           -DataFactoryName "${{ needs.prepare.outputs.factory_name }}" `
           -Sid "${{ steps.sid.outputs.value }}"
     - name: Fill *hot* database with random data
-      id: sid
       run: |
         sqlcmd -S "${{ needs.prepare.outputs.sql_server }}" \
             -d "${{ needs.prepare.outputs.hot_db }}" \
