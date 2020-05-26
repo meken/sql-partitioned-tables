@@ -1,4 +1,4 @@
-# Partioned tables with a sliding window
+# Partitioned tables with a sliding window
 
 Azure SQL Database supports horizontal partitioning of table data for manageability and performance benefits as
 explained in the [docs](https://docs.microsoft.com/en-us/sql/relational-databases/partitions/partitioned-tables-and-indexes?view=azuresqldb-current).
