@@ -141,7 +141,7 @@ jobs:
             -d "${{ needs.prepare.outputs.hot_db }}" \
             -U "${{ secrets.SQL_ADMIN_USER_LOGIN }}" \
             -P "${{ secrets.SQL_ADMIN_USER_PASSWORD }}" \
-            -N -l 30 -i
+            -N -l 30 -i "sql/fill-source-with-random-data-hot.sql"
     - name: Remove the firewall rule
       if: ${{ always() }}
       run: |
