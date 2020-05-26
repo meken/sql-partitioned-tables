@@ -1,3 +1,5 @@
+![CICD](https://github.com/meken/sql-partitioned-tables/workflows/CICD/badge.svg)
+
 # Partitioned tables with a sliding window
 
 Azure SQL Database supports horizontal partitioning of table data for manageability and performance benefits as
