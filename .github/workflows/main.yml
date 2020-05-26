@@ -52,8 +52,8 @@ jobs:
           SQL_SERVER=`echo "$OUT" | jq -r .sqlServerFqdn.value`
           HOT_CONN=`echo "$OUT" | jq -r .sqlServerHotStoreConnection.value`
           WARM_CONN=`echo "$OUT" | jq -r .sqlServerWarmStoreConnection.value`
-          HOT_DB=`echo "$OUT" | jq -r .sqlServerHotDatabase.value`
-          WARM_DB=`echo "$OUT" | jq -r .sqlServerWarmDatabase.value`
+          HOT_DB=`echo "$OUT" | jq -r .sqlServerHotStoreDatabase.value`
+          WARM_DB=`echo "$OUT" | jq -r .sqlServerWarmStoreDatabase.value`
           echo "::set-output name=factory_name::$FACTORY_NAME"
           echo "::set-output name=factory_app_id::$FACTORY_APP_ID"
           echo "::set-output name=sql_server::$SQL_SERVER"
