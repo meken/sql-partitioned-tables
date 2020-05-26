@@ -1,7 +1,7 @@
 DROP TABLE IF EXISTS numbers;
 GO
 
-SELECT TOP (10000000) n = CONVERT(INT, ROW_NUMBER() OVER (ORDER BY s1.[object_id]))
+SELECT TOP (1000000) n = CONVERT(INT, ROW_NUMBER() OVER (ORDER BY s1.[object_id]))
 INTO numbers
 FROM sys.all_objects AS s1 CROSS JOIN sys.all_objects AS s2 CROSS JOIN sys.all_objects AS s3
 OPTION (MAXDOP 1);
@@ -11,7 +11,7 @@ GO
 DROP TABLE IF EXISTS dates;
 GO
 
-SELECT TOP (9000000) d = DATEADD(ms, 100*(r.n-1), '20200501')
+SELECT TOP (1000000) d = DATEADD(ms, 100*(r.n-1), '20200501')
 INTO dates
 FROM numbers r
 OPTION (MAXDOP 1);
