@@ -222,6 +222,30 @@ After having done this, the corresponding partition in the source table becomes 
 used to copy the data to the warm data store. For this purpose we can use Azure Data Factory and that will be
 illustrated in the orchestration section of this document.
 
+If you need to get an overview of how the data is distributed over different partitions, you can use the following
+T-SQL which combines data from various dynamic management views.
+
+```SQL
+SELECT
+    OBJECT_NAME(pstats.object_id) AS table_name,
+    prv.value AS boundary_value,
+    pstats.partition_number AS partition_number,
+    pstats.row_count AS row_count
+FROM sys.dm_db_partition_stats AS pstats
+    INNER JOIN sys.partitions AS p ON pstats.partition_id = p.partition_id
+    INNER JOIN sys.destination_data_spaces AS dds ON pstats.partition_number = dds.destination_id
+    INNER JOIN sys.partition_schemes AS ps ON dds.partition_scheme_id = ps.data_space_id
+    INNER JOIN sys.partition_functions AS pf ON ps.function_id = pf.function_id
+    INNER JOIN sys.indexes AS i ON pstats.object_id = i.object_id
+        AND pstats.index_id = i.index_id
+        AND dds.partition_scheme_id = i.data_space_id
+        AND i.type <= 1 /* Heap or Clustered Index */
+    LEFT JOIN sys.partition_range_values AS prv ON pf.function_id = prv.function_id
+        AND pstats.partition_number =
+            (CASE pf.boundary_value_on_right WHEN 0 THEN prv.boundary_id ELSE (prv.boundary_id+1) END)
+ORDER BY table_name, partition_number
+```
+
 ### The cleanup
 
 After completing the copy of the data, we can empty the staging table and get ready for the next day. This requires
@@ -274,16 +298,19 @@ MERGE RANGE (@oldest);
 TRUNCATE TABLE orders_staging;
 ```
 
-Now we've documented all the steps, we can put the workflow together.
+Now we've documented all the steps, we can put the workflow together in the next section.
 
 ## The orchestration
 
 We'll be using Azure Data Factory to implement the workflow. In principle the whole flow consists of 3 simple steps
 performed nightly; switching the oldest (non-empty) partition from the source table to the staging table, copying from
-the staging table to the warm data store and finally preparing for next day by altering the partition boundaries for
-both source and staging tables before cleaning up the staging table.
+the staging table to the warm data store and finally preparing for the next day by altering the partition function
+(adding and merging boundaries) for both source and staging tables before cleaning up the staging table.
 
 ![ADF Pipeline](images/adf-pipeline.png)
+
+The details of the workflow can be found in the ARM template, that includes the references to the data stores, data
+sets, the pipeline as well as a scheduled trigger for running the pipeline on a daily basis.
 
 ## Automation
 
@@ -368,7 +395,7 @@ This repository should help you with
 
 - Setting up a SQL Server Partitioned Table
 - Configuring an Azure Data Factory Pipeline for copying data from one database to another one
-- Adding the Azure Data Factory Managed Identity to an Azure SQL Database as an external user
+- Adding the Azure Data Factory Managed Identity to an Azure SQL Database as an external user (in a headless fashion)
 - Inserting random data into a database table efficiently
 - Automating the whole setup in a Github Actions pipeline
 
