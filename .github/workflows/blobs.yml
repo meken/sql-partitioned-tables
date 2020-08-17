@@ -86,7 +86,7 @@ jobs:
           "initial-setup-hot.sql"
           "usp-switch-partition-hot.sql"
           "usp-prepare-for-next-day-hot.sql"
-          "usp-oldest_partition-date-hot.sql"
+          "usp-oldest-partition-date-hot.sql"
         )
         for FILE in ${FILES[*]}
         do
