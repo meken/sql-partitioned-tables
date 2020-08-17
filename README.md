@@ -1,4 +1,7 @@
-![CICD](https://github.com/meken/sql-partitioned-tables/workflows/CICD/badge.svg)
+![databases](https://github.com/meken/sql-partitioned-tables/workflows/databases/badge.svg)
+![blobs](https://github.com/meken/sql-partitioned-tables/workflows/blobs/badge.svg)
+
+> This branch illustrates how to move data from one (hot) database to another (warm) one. If you prefer offloading data to a blob store, check the _blob_archive_ branch.
 
 # Partitioned tables with a sliding window
 
