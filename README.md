@@ -340,6 +340,6 @@ This repository should help you with
 
 In order to run the automation, you need to make sure that the build service principal
 
-- has Contributor rights on the resource group
+- has Owner role on the resource group (in order to create resources and assign roles)
 - is part of an existing Active Directory Group (which will become the admin for the logical Azure SQL Server)
 - has read permissions on the Active Directory Graph (in order to lookup client id information from object ids)
