@@ -8,7 +8,7 @@
         "hotStoreConnection": {
             "type": "string"
         },
-        "warmStoreConnection": {
+        "coolStoreConnection": {
             "type": "string"
         },
         "startDate": {
@@ -30,11 +30,11 @@
             "properties": {
                 "activities": [
                     {
-                        "name": "Copy from staging to warm store",
+                        "name": "Copy from staging to cool store",
                         "type": "Copy",
                         "dependsOn": [
                             {
-                                "activity": "Switch oldest partition to staging",
+                                "activity": "Lookup oldest date",
                                 "dependencyConditions": [
                                     "Succeeded"
                                 ]
@@ -52,10 +52,14 @@
                             "source": {
                                 "type": "AzureSqlSource",
                                 "queryTimeout": "02:00:00",
-                                "isolationLevel": "ReadCommitted"
+                                "isolationLevel": "ReadCommitted",
+                                "partitionOption": "None"
                             },
                             "sink": {
-                                "type": "AzureSqlSink"
+                                "type": "ParquetSink",
+                                "storeSettings": {
+                                    "type": "AzureBlobStorageWriteSettings"
+                                }
                             },
                             "enableStaging": false
                         },
@@ -68,9 +72,14 @@
                         ],
                         "outputs": [
                             {
-                                "referenceName": "WarmData",
+                                "referenceName": "CoolData",
                                 "type": "DatasetReference",
-                                "parameters": {}
+                                "parameters": {
+                                    "fileName": {
+                                        "value": "@activity('Lookup oldest date').output.firstRow.value",
+                                        "type": "Expression"
+                                    }
+                                }
                             }
                         ]
                     },
@@ -100,7 +109,7 @@
                         "type": "SqlServerStoredProcedure",
                         "dependsOn": [
                             {
-                                "activity": "Copy from staging to warm store",
+                                "activity": "Copy from staging to cool store",
                                 "dependencyConditions": [
                                     "Succeeded"
                                 ]
@@ -121,18 +130,48 @@
                             "referenceName": "HotStore",
                             "type": "LinkedServiceReference"
                         }
+                    },
+                    {
+                        "name": "Lookup oldest date",
+                        "type": "Lookup",
+                        "dependsOn": [
+                            {
+                                "activity": "Switch oldest partition to staging",
+                                "dependencyConditions": [
+                                    "Succeeded"
+                                ]
+                            }
+                        ],
+                        "policy": {
+                            "timeout": "7.00:00:00",
+                            "retry": 0,
+                            "retryIntervalInSeconds": 30,
+                            "secureOutput": false,
+                            "secureInput": false
+                        },
+                        "userProperties": [],
+                        "typeProperties": {
+                            "source": {
+                                "type": "AzureSqlSource",
+                                "sqlReaderStoredProcedureName": "[[dbo].[usp_oldest_partition_date]",
+                                "queryTimeout": "02:00:00",
+                                "partitionOption": "None"
+                            },
+                            "dataset": {
+                                "referenceName": "HotData",
+                                "type": "DatasetReference",
+                                "parameters": {}
+                            }
+                        }
                     }
                 ],
-                "variables": {
-                    "truncate_table": {
-                        "type": "String"
-                    }
-                },
+                "variables": {},
                 "annotations": []
             },
             "dependsOn": [
                 "[concat(variables('factoryId'), '/datasets/HotData')]",
-                "[concat(variables('factoryId'), '/datasets/WarmData')]",
+                "[concat(variables('factoryId'), '/datasets/CoolData')]",
+                "[concat(variables('factoryId'), '/linkedServices/CoolStore')]",
                 "[concat(variables('factoryId'), '/linkedServices/HotStore')]"
             ]
         },
@@ -158,24 +197,36 @@
             ]
         },
         {
-            "name": "[concat(parameters('factoryName'), '/WarmData')]",
+            "name": "[concat(parameters('factoryName'), '/CoolData')]",
             "type": "Microsoft.DataFactory/factories/datasets",
             "apiVersion": "2018-06-01",
             "properties": {
                 "linkedServiceName": {
-                    "referenceName": "WarmStore",
+                    "referenceName": "CoolStore",
                     "type": "LinkedServiceReference"
                 },
+                "parameters": {
+                    "fileName": {
+                        "type": "string"
+                    }
+                },
                 "annotations": [],
-                "type": "AzureSqlTable",
+                "type": "Parquet",
                 "schema": [],
                 "typeProperties": {
-                    "schema": "dbo",
-                    "table": "orders"
-                }
+                    "location": {
+                        "type": "AzureBlobStorageLocation",
+                        "fileName": {
+                            "value": "@concat(dataset().fileName, '.parquet')",
+                            "type": "Expression"
+                        },
+                        "container": "archive"
+                    },
+                    "compressionCodec": "snappy"
+                },
             },
             "dependsOn": [
-                "[concat(variables('factoryId'), '/linkedServices/WarmStore')]"
+                "[concat(variables('factoryId'), '/linkedServices/CoolStore')]"
             ]
         },
         {
@@ -192,14 +243,15 @@
             "dependsOn": []
         },
         {
-            "name": "[concat(parameters('factoryName'), '/WarmStore')]",
+            "name": "[concat(parameters('factoryName'), '/CoolStore')]",
             "type": "Microsoft.DataFactory/factories/linkedServices",
             "apiVersion": "2018-06-01",
             "properties": {
                 "annotations": [],
-                "type": "AzureSqlDatabase",
+                "type": "AzureBlobStorage",
                 "typeProperties": {
-                    "connectionString": "[parameters('warmStoreConnection')]"
+                    "serviceEndpoint": "[parameters('coolStoreConnection')]",
+                    "accountKind": "StorageV2"
                 }
             },
             "dependsOn": []

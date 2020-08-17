@@ -1,5 +1,7 @@
 ![CICD](https://github.com/meken/sql-partitioned-tables/workflows/CICD/badge.svg)
 
+> This branch illustrates how to offload old data to a cool store (blob) for archiving or batch analysis purposes. If you need to keep old data warm, have a look at the master branch where older data is offloaded to another (cheaper) database.
+
 # Partitioned tables with a sliding window
 
 Azure SQL Database supports horizontal partitioning of table data for manageability and performance benefits as
