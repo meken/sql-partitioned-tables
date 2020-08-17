@@ -12,12 +12,11 @@ jobs:
     outputs:
       sql_server: ${{ steps.resource_setup.outputs.sql_server }}
       hot_conn_str: ${{ steps.resource_setup.outputs.hot_conn_str }}
-      cool_conn_str: ${{ steps.resource_setup.outputs.cool_conn_str }}
+      warm_conn_str: ${{ steps.resource_setup.outputs.warm_conn_str }}
       hot_db: ${{ steps.resource_setup.outputs.hot_db }}
+      warm_db: ${{ steps.resource_setup.outputs.warm_db }}
       factory_name: ${{ steps.resource_setup.outputs.factory_name }}
       factory_app_id: ${{ steps.resource_setup.outputs.factory_app_id }}
-      factory_principal_id: ${{ steps.resource_setup.outputs.factory_principal_id }}
-      factory_permission_scope: ${{ steps.resource_setup.outputs.factory_permission_scope }}
     steps:
     - name: Checkout
       uses: actions/checkout@v2
@@ -25,7 +24,7 @@ jobs:
       uses: azure/login@v1
       with:
         creds: ${{ secrets.AZURE_CREDENTIALS }}
-    - name: Set up Database, Storage Account and Data Factory
+    - name: Set up Hot & Warm databases and Data Factory
       uses: azure/CLI@v1
       id: resource_setup
       with:
@@ -47,19 +46,18 @@ jobs:
           FACTORY_NAME=`echo "$OUT" | jq -r .factoryName.value`
           FACTORY_PRINCIPAL_ID=`echo "$OUT" | jq -r .factoryPrincipalId.value`
           FACTORY_APP_ID=`az ad sp show --id "$FACTORY_PRINCIPAL_ID" --query appId -o tsv`
-          FACTORY_PERMISSION_SCOPE=`echo "$OUT" | jq -r .storageContainerId.value`
           SQL_SERVER=`echo "$OUT" | jq -r .sqlServerFqdn.value`
           HOT_CONN=`echo "$OUT" | jq -r .sqlServerHotStoreConnection.value`
-          COOL_CONN=`echo "$OUT" | jq -r .storageAccountCoolStoreConnection.value`
+          WARM_CONN=`echo "$OUT" | jq -r .sqlServerWarmStoreConnection.value`
           HOT_DB=`echo "$OUT" | jq -r .sqlServerHotStoreDatabase.value`
+          WARM_DB=`echo "$OUT" | jq -r .sqlServerWarmStoreDatabase.value`
           echo "::set-output name=factory_name::$FACTORY_NAME"
           echo "::set-output name=factory_app_id::$FACTORY_APP_ID"
-          echo "::set-output name=factory_principal_id::$FACTORY_PRINCIPAL_ID"
-          echo "::set-output name=factory_permission_scope::$FACTORY_PERMISSION_SCOPE"
           echo "::set-output name=sql_server::$SQL_SERVER"
           echo "::set-output name=hot_conn_str::$HOT_CONN"
           echo "::set-output name=hot_db::$HOT_DB"
-          echo "::set-output name=cool_conn_str::$COOL_CONN"
+          echo "::set-output name=warm_conn_str::$WARM_CONN"
+          echo "::set-output name=warm_db::$WARM_DB"
   database_setup:
     needs: prepare
     runs-on: ubuntu-latest
@@ -86,7 +84,6 @@ jobs:
           "initial-setup-hot.sql"
           "usp-switch-partition-hot.sql"
           "usp-prepare-for-next-day-hot.sql"
-          "usp-oldest_partition-date-hot.sql"
         )
         for FILE in ${FILES[*]}
         do
@@ -96,6 +93,13 @@ jobs:
                 -P "${{ secrets.SQL_ADMIN_USER_PASSWORD }}" \
                 -N -l 30 -i "sql/$FILE"
         done
+    - name: Create tables in *warm* store
+      run: |
+        sqlcmd -S "${{ needs.prepare.outputs.sql_server }}" \
+              -d "${{ needs.prepare.outputs.warm_db }}" \
+              -U "${{ secrets.SQL_ADMIN_USER_LOGIN }}" \
+              -P "${{ secrets.SQL_ADMIN_USER_PASSWORD }}" \
+              -N -l 30 -i "sql/initial-setup-warm.sql"
     - name: Retrieve the Security Identifier for Data Factory managed identity
       id: sid
       run: |
@@ -122,15 +126,14 @@ jobs:
           -AccessToken "${{ steps.access_token.outputs.value }}" `
           -DataFactoryName "${{ needs.prepare.outputs.factory_name }}" `
           -Sid "${{ steps.sid.outputs.value }}"
-    - name: Grant permissions to the Data Factory on the *cool* store
-      uses: azure/CLI@v1
-      with:
-        azcliversion: latest
-        inlineScript: |
-          az role assignment create \
-            --role "Storage Blob Data Contributor" \
-            --assignee-object-id "${{ needs.prepare.outputs.factory_principal_id }}"
-            --scope "${{ needs.prepare.outputs.factory_permission_scope }}"
+    - name: Create user and grant permissions on *warm* database
+      shell: pwsh
+      run: |
+        ./Grant-Permissions.ps1 -ConnectionString "${{ needs.prepare.outputs.warm_conn_str }}" `
+          -FilePath "sql/data-factory-permissions-warm.sql" `
+          -AccessToken "${{ steps.access_token.outputs.value }}" `
+          -DataFactoryName "${{ needs.prepare.outputs.factory_name }}" `
+          -Sid "${{ steps.sid.outputs.value }}"
     - name: Fill *hot* database with random data
       run: |
         sqlcmd -S "${{ needs.prepare.outputs.sql_server }}" \
@@ -140,15 +143,12 @@ jobs:
             -N -l 30 -i "sql/fill-source-with-random-data-hot.sql"
     - name: Remove the firewall rule
       if: ${{ always() }}
-      uses: azure/CLI@v1
-      with:
-        azcliversion: latest
-        inlineScript: |
-          SERVER=`echo ${{ needs.prepare.outputs.sql_server }} | cut -d"." -f1`
-          az sql server firewall-rule delete -g "${{ env.RESOURCE_GROUP }}" \
-            -s "$SERVER" \
-            -n github-build-agent \
-            -o none
+      run: |
+        SERVER=`echo ${{ needs.prepare.outputs.sql_server }} | cut -d"." -f1`
+        az sql server firewall-rule delete -g "${{ env.RESOURCE_GROUP }}" \
+          -s "$SERVER" \
+          -n github-build-agent \
+          -o none
     - name: Set up Data Factory resources (datasets/pipelines/triggers)
       uses: azure/CLI@v1
       with:
@@ -158,6 +158,5 @@ jobs:
             --template-file infra/data-factory-resources.json \
             --parameters factoryName="${{ needs.prepare.outputs.factory_name }}" \
               hotStoreConnection="${{ needs.prepare.outputs.hot_conn_str }}" \
-              coolStoreConnection="${{ needs.prepare.outputs.cool_conn_str }}" \
+              warmStoreConnection="${{ needs.prepare.outputs.warm_conn_str }}" \
             -o none
-
