@@ -48,7 +48,7 @@
             },
             "resources": [
                 {
-                    "type": "containers",
+                    "type": "blobServices/containers",
                     "apiVersion": "2019-06-01",
                     "name": "[concat('default/', variables('storageContainerName'))]",
                     "dependsOn": [
@@ -142,10 +142,10 @@
             "type": "string",
             "value": "[concat('https://',variables('storageAccountName'),'.blob.core.windows.net/')]"
         },
-        "storageContainerId": {
+        "storageAccountId": {
             "type": "string",
-            "value": "[subscriptionResourceId('Microsoft.Storage/storageAccounts/containers', variables('storageAccountName'), variables('storageContainerName'))]"
-        }
+            "value": "[resourceId('Microsoft.Storage/storageAccounts', variables('storageAccountName'))]"
+        },
         "factoryName": {
             "type": "string",
             "value": "[variables('factoryName')]"
