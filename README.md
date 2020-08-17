@@ -1,4 +1,5 @@
-![CICD](https://github.com/meken/sql-partitioned-tables/workflows/CICD/badge.svg)
+![databases](https://github.com/meken/sql-partitioned-tables/workflows/databases/badge.svg)
+![blobs](https://github.com/meken/sql-partitioned-tables/workflows/blobs/badge.svg)
 
 > This branch illustrates how to offload old data to a cool store (blob) for archiving or batch analysis purposes. If you need to keep old data warm, have a look at the master branch where older data is offloaded to another (cheaper) database.
 
