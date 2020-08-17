@@ -223,7 +223,7 @@
                         "container": "archive"
                     },
                     "compressionCodec": "snappy"
-                },
+                }
             },
             "dependsOn": [
                 "[concat(variables('factoryId'), '/linkedServices/CoolStore')]"
