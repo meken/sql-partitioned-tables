@@ -149,6 +149,16 @@ jobs:
           -s "$SERVER" \
           -n github-build-agent \
           -o none
+    - name: Stop running Data Factory trigger (if any)
+      uses: azure/CLI@v1
+      continue-on-error: true
+      with:
+        azcliversion: latest
+        inlineScript: |
+          az extension add --name datafactory
+          az datafactory trigger stop -g ${{ env.RESOURCE_GROUP }} \
+             --factory-name ${{ needs.prepare.outputs.factory_name }} \
+             --name nightly
     - name: Set up Data Factory resources (datasets/pipelines/triggers)
       uses: azure/CLI@v1
       with:
@@ -160,4 +170,13 @@ jobs:
               hotStoreConnection="${{ needs.prepare.outputs.hot_conn_str }}" \
               warmStoreConnection="${{ needs.prepare.outputs.warm_conn_str }}" \
             -o none
+    - name: Activate Data Factory trigger
+      uses: azure/CLI@v1
+      with:
+        azcliversion: latest
+        inlineScript: |
+          az extension add --name datafactory
+          az datafactory trigger start -g ${{ env.RESOURCE_GROUP }} \
+             --factory-name ${{ needs.prepare.outputs.factory_name }} \
+             --name nightly
 
