@@ -47,7 +47,7 @@ jobs:
           FACTORY_NAME=`echo "$OUT" | jq -r .factoryName.value`
           FACTORY_PRINCIPAL_ID=`echo "$OUT" | jq -r .factoryPrincipalId.value`
           FACTORY_APP_ID=`az ad sp show --id "$FACTORY_PRINCIPAL_ID" --query appId -o tsv`
-          FACTORY_PERMISSION_SCOPE=`echo "$OUT" | jq -r .storageContainerId.value`
+          FACTORY_PERMISSION_SCOPE=`echo "$OUT" | jq -r .storageAccountId.value`
           SQL_SERVER=`echo "$OUT" | jq -r .sqlServerFqdn.value`
           HOT_CONN=`echo "$OUT" | jq -r .sqlServerHotStoreConnection.value`
           COOL_CONN=`echo "$OUT" | jq -r .storageAccountCoolStoreConnection.value`
