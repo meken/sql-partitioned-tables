@@ -86,7 +86,7 @@ jobs:
           "initial-setup-hot.sql"
           "usp-switch-partition-hot.sql"
           "usp-prepare-for-next-day-hot.sql"
-          "usp-oldest_partition-date-hot.sql"
+          "usp-oldest-partition-date-hot.sql"
         )
         for FILE in ${FILES[*]}
         do
@@ -129,7 +129,7 @@ jobs:
         inlineScript: |
           az role assignment create \
             --role "Storage Blob Data Contributor" \
-            --assignee-object-id "${{ needs.prepare.outputs.factory_principal_id }}"
+            --assignee-object-id "${{ needs.prepare.outputs.factory_principal_id }}" \
             --scope "${{ needs.prepare.outputs.factory_permission_scope }}"
     - name: Fill *hot* database with random data
       run: |
