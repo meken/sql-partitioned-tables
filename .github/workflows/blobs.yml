@@ -172,11 +172,10 @@ jobs:
             -o none
     - name: Activate Data Factory trigger
       uses: azure/CLI@v1
-      continue-on-error: true
       with:
         azcliversion: latest
         inlineScript: |
           az extension add --name datafactory
-          az datafactory trigger stop -g ${{ env.RESOURCE_GROUP }} \
+          az datafactory trigger start -g ${{ env.RESOURCE_GROUP }} \
              --factory-name ${{ needs.prepare.outputs.factory_name }} \
              --name nightly
