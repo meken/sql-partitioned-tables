@@ -47,7 +47,7 @@ jobs:
           FACTORY_NAME=`echo "$OUT" | jq -r .factoryName.value`
           FACTORY_PRINCIPAL_ID=`echo "$OUT" | jq -r .factoryPrincipalId.value`
           FACTORY_APP_ID=`az ad sp show --id "$FACTORY_PRINCIPAL_ID" --query appId -o tsv`
-          FACTORY_PERMISSION_SCOPE=`echo "$OUT" | jq -r .storageAccountId.value`
+          FACTORY_PERMISSION_SCOPE=`echo "$OUT" | jq -r .storageContainerId.value`
           SQL_SERVER=`echo "$OUT" | jq -r .sqlServerFqdn.value`
           HOT_CONN=`echo "$OUT" | jq -r .sqlServerHotStoreConnection.value`
           COOL_CONN=`echo "$OUT" | jq -r .storageAccountCoolStoreConnection.value`
@@ -86,7 +86,7 @@ jobs:
           "initial-setup-hot.sql"
           "usp-switch-partition-hot.sql"
           "usp-prepare-for-next-day-hot.sql"
-          "usp-oldest-partition-date-hot.sql"
+          "usp-oldest_partition-date-hot.sql"
         )
         for FILE in ${FILES[*]}
         do
@@ -129,7 +129,7 @@ jobs:
         inlineScript: |
           az role assignment create \
             --role "Storage Blob Data Contributor" \
-            --assignee-object-id "${{ needs.prepare.outputs.factory_principal_id }}" \
+            --assignee-object-id "${{ needs.prepare.outputs.factory_principal_id }}"
             --scope "${{ needs.prepare.outputs.factory_permission_scope }}"
     - name: Fill *hot* database with random data
       run: |
@@ -149,6 +149,16 @@ jobs:
             -s "$SERVER" \
             -n github-build-agent \
             -o none
+    - name: Stop running Data Factory trigger (if any)
+      uses: azure/CLI@v1
+      continue-on-error: true
+      with:
+        azcliversion: latest
+        inlineScript: |
+          az extension add --name datafactory
+          az datafactory trigger stop -g ${{ env.RESOURCE_GROUP }} \
+             --factory-name ${{ needs.prepare.outputs.factory_name }} \
+             --name nightly
     - name: Set up Data Factory resources (datasets/pipelines/triggers)
       uses: azure/CLI@v1
       with:
@@ -160,4 +170,13 @@ jobs:
               hotStoreConnection="${{ needs.prepare.outputs.hot_conn_str }}" \
               coolStoreConnection="${{ needs.prepare.outputs.cool_conn_str }}" \
             -o none
-
+    - name: Activate Data Factory trigger
+      uses: azure/CLI@v1
+      continue-on-error: true
+      with:
+        azcliversion: latest
+        inlineScript: |
+          az extension add --name datafactory
+          az datafactory trigger stop -g ${{ env.RESOURCE_GROUP }} \
+             --factory-name ${{ needs.prepare.outputs.factory_name }} \
+             --name nightly
